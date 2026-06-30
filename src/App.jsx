@@ -14,7 +14,7 @@ function App() {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    const savedUser = localStorage.getItem('stocksense_user');
+    const savedUser = localStorage.getItem('vyavastha_user');
     if (savedUser) {
       try {
         const parsed = JSON.parse(savedUser);
@@ -25,12 +25,12 @@ function App() {
 
   const handleLogin = (userData) => {
     setUser(userData);
-    localStorage.setItem('stocksense_user', JSON.stringify(userData));
+    localStorage.setItem('vyavastha_user', JSON.stringify(userData));
   };
 
 const handleLogout = () => {
   setUser(null);
-  localStorage.removeItem('stocksense_user');
+  localStorage.removeItem('vyavastha_user');
 };
 
 return (
@@ -47,7 +47,7 @@ return (
           {user.role === 'admin' && (
             <>
               <Route path="/" element={<GlobalOverview user={user} />} />
-              <Route path="/settings" element={<Settings />} />
+              <Route path="/settings" element={<Settings user={user} />} />
             </>
           )}
           {/* If manager tries to access root, redirect to dashboard */}

@@ -39,7 +39,7 @@ export default function Layout({ user, onLogout }) {
             <div className="w-10 h-10 bg-navy border border-border rounded-xl flex items-center justify-center shadow-[0_0_10px_rgba(59,130,246,0.2)]">
               <Package className="w-5 h-5 text-primary" />
             </div>
-            <span className="text-xl font-bold text-white">StockSense</span>
+            <span className="text-xl font-bold text-white">Vyavastha</span>
           </div>
           <button className="lg:hidden text-text-muted hover:text-white" onClick={closeSidebar}>
             <X className="w-6 h-6" />
@@ -176,7 +176,7 @@ export default function Layout({ user, onLogout }) {
         <header className="lg:hidden flex items-center justify-between p-4 border-b border-border bg-navy-light">
           <div className="flex items-center gap-2">
             <Package className="w-6 h-6 text-primary" />
-            <span className="font-bold text-white">StockSense</span>
+            <span className="font-bold text-white">Vyavastha</span>
           </div>
           <button 
             className="p-2 text-text-muted hover:text-white"

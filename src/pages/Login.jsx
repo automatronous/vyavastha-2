@@ -56,7 +56,7 @@ export default function Login({ onLogin }) {
           <div className="w-16 h-16 bg-navy border border-border rounded-2xl flex items-center justify-center mb-4 shadow-[0_0_20px_rgba(59,130,246,0.3)]">
             <Package className="w-8 h-8 text-primary" />
           </div>
-          <h1 className="text-3xl font-bold text-white tracking-tight">StockSense</h1>
+          <h1 className="text-3xl font-bold text-white tracking-tight">Vyavastha</h1>
           <p className="text-text-muted mt-2 text-sm">Enterprise Inventory Management</p>
         </div>
 
