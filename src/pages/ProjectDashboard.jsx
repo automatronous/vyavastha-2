@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback, useContext } from 'react';
-import { 
+import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
   LineChart, Line, Legend
 } from 'recharts';
-import { 
-  Package, DollarSign, TrendingUp, AlertTriangle, 
+import {
+  Package, DollarSign, TrendingUp, AlertTriangle,
   Search, ArrowUpDown, Check, X, ShieldAlert
 } from 'lucide-react';
 import { supabase } from '../supabase';
@@ -23,40 +23,42 @@ export default function ProjectDashboard({ user }) {
       lowStockItems: 0
     }
   });
+  const [stockMovementChartData, setStockMovementChartData] = useState([]);
   const [searchTerm, setSearchTerm] = useState('');
+
   const buildStockMovementData = (txns) => {
-  const days = [];
-  for (let i = 6; i >= 0; i--) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    d.setHours(0, 0, 0, 0);
-    days.push(d);
-  }
+    const days = [];
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      d.setHours(0, 0, 0, 0);
+      days.push(d);
+    }
 
-  return days.map((day, idx) => {
-    const nextDay = new Date(day);
-    nextDay.setDate(nextDay.getDate() + 1);
+    return days.map((day) => {
+      const nextDay = new Date(day);
+      nextDay.setDate(nextDay.getDate() + 1);
 
-    const dayTxns = txns.filter(t => {
-      const ts = new Date(t.timestamp);
-      return ts >= day && ts < nextDay;
+      const dayTxns = txns.filter(t => {
+        const ts = new Date(t.timestamp);
+        return ts >= day && ts < nextDay;
+      });
+
+      const inward = dayTxns.filter(t => t.type === 'inward').reduce((sum, t) => sum + (t.qty || 0), 0);
+      const outward = dayTxns.filter(t => t.type === 'outward').reduce((sum, t) => sum + (t.qty || 0), 0);
+
+      return {
+        name: day.toLocaleDateString('en-IN', { weekday: 'short' }),
+        inward,
+        outward
+      };
     });
-
-    const inward = dayTxns.filter(t => t.type === 'inward').reduce((sum, t) => sum + (t.qty || 0), 0);
-    const outward = dayTxns.filter(t => t.type === 'outward').reduce((sum, t) => sum + (t.qty || 0), 0);
-
-    return {
-      name: day.toLocaleDateString('en-IN', { weekday: 'short' }),
-      inward,
-      outward
-    };
-  });
-};
+  };
 
   // Dashboard data fetching
   const fetchDashboardData = useCallback(async () => {
     if (!currentProject?.id) return;
-    
+
     try {
       const [
         { data: products },
@@ -73,6 +75,10 @@ export default function ProjectDashboard({ user }) {
       const prods = products || [];
       const stks = stock || [];
       const txns = transactions || [];
+
+      const movementData = buildStockMovementData(txns);
+      setStockMovementChartData(movementData);
+
       const alrts = alertsData || [];
 
       const stockTableData = stks.map(s => {
@@ -90,13 +96,13 @@ export default function ProjectDashboard({ user }) {
       });
 
       const totalProducts = prods.length;
-      
+
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      
+
       const totalTransactionsThisWeek = txns.filter(t => new Date(t.timestamp) > sevenDaysAgo).length;
       const addedThisWeek = txns.filter(t => t.type === 'inward' && new Date(t.timestamp) > sevenDaysAgo).length;
-      
+
       const lowStockItems = stks.filter(s => s.current_qty < s.threshold).length;
 
       const topProductsData = [...stockTableData]
@@ -108,7 +114,7 @@ export default function ProjectDashboard({ user }) {
         const p = prods.find(p => p.id === a.product_id) || {};
         return {
           id: a.id,
-          text: `${p.name} is running low. Current: ${stks.find(s=>s.product_id===a.product_id)?.current_qty}, Threshold: ${stks.find(s=>s.product_id===a.product_id)?.threshold}.`,
+          text: `${p.name} is running low. Current: ${stks.find(s => s.product_id === a.product_id)?.current_qty}, Threshold: ${stks.find(s => s.product_id === a.product_id)?.threshold}.`,
           type: 'danger'
         };
       });
@@ -131,7 +137,7 @@ export default function ProjectDashboard({ user }) {
 
   useEffect(() => {
     if (!currentProject?.id) return;
-    
+
     fetchDashboardData();
 
     const stockSubscription = supabase
@@ -145,8 +151,8 @@ export default function ProjectDashboard({ user }) {
       supabase.removeChannel(stockSubscription);
     };
   }, [currentProject?.id, fetchDashboardData]);
-  
-  const filteredTableData = dashboardData.stockTableData.filter(item => 
+
+  const filteredTableData = dashboardData.stockTableData.filter(item =>
     item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     item.category.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -181,7 +187,7 @@ export default function ProjectDashboard({ user }) {
           </div>
           <p className="text-2xl font-bold text-white">{dashboardData.stats.totalProducts}</p>
         </div>
-        
+
         <div className="card p-5">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-medium text-text-muted">Total Txns This Week</h3>
@@ -229,8 +235,8 @@ export default function ProjectDashboard({ user }) {
                   <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
                   <XAxis dataKey="name" stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} />
                   <YAxis stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} />
-                  <RechartsTooltip 
-                    cursor={{ fill: '#1E293B' }} 
+                  <RechartsTooltip
+                    cursor={{ fill: '#1E293B' }}
                     contentStyle={{ backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '8px' }}
                   />
                   <Bar dataKey="stock" fill="#3B82F6" radius={[4, 4, 0, 0]} />
@@ -242,18 +248,18 @@ export default function ProjectDashboard({ user }) {
 
         <div className="card p-6">
           <h3 className="text-lg font-bold text-white mb-6">Stock Movement (7 Days)</h3>
-          {stockMovementData.length === 0 ? (
+          {stockMovementChartData.every(d => d.inward === 0 && d.outward === 0) ? (
             <div className="h-[300px] w-full flex items-center justify-center border border-border rounded-lg bg-navy/50">
               <p className="text-text-muted">No data yet</p>
             </div>
           ) : (
             <div className="h-[300px] w-full">
               <ResponsiveContainer width="100%" height="100%" minWidth={10} minHeight={300}>
-                <LineChart data={stockMovementData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                <LineChart data={stockMovementChartData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#334155" vertical={false} />
                   <XAxis dataKey="name" stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} />
                   <YAxis stroke="#94A3B8" fontSize={12} tickLine={false} axisLine={false} />
-                  <RechartsTooltip 
+                  <RechartsTooltip
                     contentStyle={{ backgroundColor: '#0F172A', borderColor: '#334155', borderRadius: '8px' }}
                   />
                   <Legend iconType="circle" wrapperStyle={{ fontSize: '12px' }} />
@@ -280,13 +286,13 @@ export default function ProjectDashboard({ user }) {
                   <p className="text-sm text-text-main">{alert.text}</p>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  <button 
+                  <button
                     onClick={() => dismissAlert(alert.id)}
                     className="p-2 text-text-muted hover:text-white bg-navy hover:bg-navy-lighter rounded-lg border border-border transition-colors text-sm flex items-center"
                   >
                     <X className="w-4 h-4 mr-1" /> Dismiss
                   </button>
-                  <button 
+                  <button
                     onClick={() => dismissAlert(alert.id)}
                     className="py-2 px-3 bg-primary text-white hover:bg-primary-hover rounded-lg transition-colors text-sm flex items-center font-medium"
                   >
@@ -309,16 +315,16 @@ export default function ProjectDashboard({ user }) {
           <h2 className="text-lg font-bold text-white">Current Stock</h2>
           <div className="relative">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" />
-            <input 
-              type="text" 
-              placeholder="Search products..." 
+            <input
+              type="text"
+              placeholder="Search products..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="input-field pl-9 py-1.5 text-sm w-full sm:w-64"
             />
           </div>
         </div>
-        
+
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
