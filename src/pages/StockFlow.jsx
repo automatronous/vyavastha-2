@@ -3,6 +3,9 @@ import { UploadCloud, FileText, CheckCircle2, Loader2, Plus, Trash2, Edit2 } fro
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../supabase';
 import { ProjectContext } from '../context/ProjectContext';
+import * as XLSX from "xlsx";
+import Papa from "papaparse";
+import { extractExcelWithGemini } from "../services/geminiExcel";
 
 export default function StockFlow({ type, user }) {
   const [step, setStep] = useState(1); // 1: Upload, 2: Loading, 3: Confirm, 4: Success, 5: Processing DB
@@ -104,6 +107,63 @@ export default function StockFlow({ type, user }) {
 
     reader.readAsDataURL(file);
   };
+
+  const handleExcelUpload = async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  const extension = file.name.split(".").pop().toLowerCase();
+
+  // ---------- CSV ----------
+  if (extension === "csv") {
+    Papa.parse(file, {
+      header: true,
+      skipEmptyLines: true,
+      complete: async (results) => {
+        try {
+          const imported = await extractExcelWithGemini(results.data);
+
+          setItems(imported);
+          setStep(3);
+        } catch (err) {
+          console.error(err);
+          alert("Unable to process CSV using Gemini.");
+        }
+      },
+      error: () => {
+        alert("Unable to read CSV file.");
+      },
+    });
+
+    return;
+  }
+
+  // ---------- XLSX / XLS ----------
+  const reader = new FileReader();
+
+  reader.onload = async (event) => {
+    try {
+      const workbook = XLSX.read(event.target.result, {
+        type: "array",
+      });
+
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+
+      const rows = XLSX.utils.sheet_to_json(sheet);
+
+      const imported = await extractExcelWithGemini(rows);
+
+      setItems(imported);
+      setStep(3);
+    } catch (err) {
+      console.error(err);
+      alert("Unable to process Excel file.");
+    }
+  };
+
+  reader.readAsArrayBuffer(file);
+};
+
 
   const handleConfirm = async () => {
     if (!currentProjectId) {
@@ -268,16 +328,45 @@ export default function StockFlow({ type, user }) {
         <h1 className="text-2xl font-bold text-white mb-6">{title}</h1>
         
         <label className="card p-8 md:p-12 text-center border-dashed border-2 border-border hover:border-primary/50 transition-colors cursor-pointer group block">
-          <input type="file" className="hidden" accept="image/*" onChange={handleFileUpload} />
+          <input
+    id="billUpload"
+    type="file"
+    className="hidden"
+    accept="image/*"
+    onChange={handleFileUpload}
+/>
+
+<input
+    id="excelUpload"
+    type="file"
+    className="hidden"
+    accept=".xlsx,.xls,.csv"
+    onChange={handleExcelUpload}
+/>
           <div className="w-16 h-16 bg-navy rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform">
             <UploadCloud className="w-8 h-8 text-primary" />
           </div>
           <h3 className="text-xl font-medium text-white mb-2">Drop bill image here or click to upload</h3>
-          <p className="text-text-muted text-sm mb-8">Supported formats: JPG, PNG</p>
+          <p className="text-text-muted text-sm mb-8">Supported formats: JPG • PNG • XLSX • XLS • CSV</p>
           
-          <div className="btn-primary inline-flex items-center justify-center mx-auto min-w-[200px]">
-            <FileText className="w-5 h-5 mr-2" /> Scan Bill
-          </div>
+          <div className="flex justify-center gap-4">
+
+  <label
+    htmlFor="billUpload"
+    className="btn-primary cursor-pointer inline-flex items-center justify-center min-w-[180px]"
+  >
+    <FileText className="w-5 h-5 mr-2" />
+    Scan Bill
+  </label>
+
+  <label
+    htmlFor="excelUpload"
+    className="btn-secondary cursor-pointer inline-flex items-center justify-center min-w-[180px]"
+  >
+    📊 Import Excel
+  </label>
+
+</div>
         </label>
       </div>
     );
