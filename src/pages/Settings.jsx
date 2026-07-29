@@ -1,5 +1,5 @@
 import { useState, useEffect, useContext } from 'react';
-import { Users, UserPlus, Shield, Check, X, Loader2 } from 'lucide-react';
+import { Users, UserPlus, X, Loader2 } from 'lucide-react';
 import { supabase } from '../supabase';
 import { ProjectContext } from '../context/ProjectContext';
 

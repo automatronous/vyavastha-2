@@ -74,7 +74,7 @@ export default function Login({ onLogin }) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               className="input-field"
-              placeholder="admin@demo.com or manager@demo.com"
+              placeholder="Enter your email"
               required
             />
           </div>
@@ -86,7 +86,7 @@ export default function Login({ onLogin }) {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="input-field"
-              placeholder="admin123 or manager123"
+              placeholder="Enter your password"
               required
             />
           </div>

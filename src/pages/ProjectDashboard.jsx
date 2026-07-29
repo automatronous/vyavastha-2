@@ -4,14 +4,14 @@ import {
   LineChart, Line, Legend
 } from 'recharts';
 import { 
-  Package, DollarSign, TrendingUp, AlertTriangle, 
-  Search, ArrowUpDown, Check, X, ShieldAlert
+  Package, TrendingUp, AlertTriangle, 
+  Search, ArrowUpDown, Check, X
 } from 'lucide-react';
 import { stockMovementData } from '../data';
 import { supabase } from '../supabase';
 import { ProjectContext } from '../context/ProjectContext';
 
-export default function ProjectDashboard({ user }) {
+export default function ProjectDashboard() {
   const { currentProject } = useContext(ProjectContext);
   const [dashboardData, setDashboardData] = useState({
     topProductsData: [],
@@ -136,11 +136,6 @@ export default function ProjectDashboard({ user }) {
           <h1 className="text-2xl font-bold text-white">{currentProject?.name} Dashboard</h1>
           <p className="text-text-muted mt-1">{currentProject?.location}{currentProject?.location ? ' • ' : ''}Updated just now</p>
         </div>
-        {user.role === 'manager' && (
-          <button className="btn-secondary flex items-center text-sm">
-            <ShieldAlert className="w-4 h-4 mr-2" /> Request Access
-          </button>
-        )}
       </div>
 
       {/* KPI Cards */}
