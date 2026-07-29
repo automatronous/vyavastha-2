@@ -1,69 +1,104 @@
-import { useState } from 'react';
-import { Users, UserPlus, Shield, Check, X } from 'lucide-react';
-import { mockManagers, mockAccessRequests } from '../data';
+import { useState, useEffect, useContext } from 'react';
+import { Users, UserPlus, X, Loader2 } from 'lucide-react';
+import { supabase } from '../supabase';
+import { ProjectContext } from '../context/ProjectContext';
 
-export default function Settings() {
-  const [managers, setManagers] = useState(mockManagers);
-  const [requests, setRequests] = useState(mockAccessRequests);
+export default function Settings({ user }) {
+  const { projects } = useContext(ProjectContext);
+  const [managers, setManagers] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const [newManager, setNewManager] = useState({
-    name: '', email: '', password: '', project: 'Project Alpha'
+    name: '', email: '', password: '', project_id: ''
   });
 
-  const deactivateManager = (id) => {
-    setManagers(managers.map(m => m.id === id ? { ...m, status: 'Inactive' } : m));
+  useEffect(() => {
+    fetchManagers();
+  }, []);
+
+  const fetchManagers = async () => {
+    setLoading(true);
+    const { data, error } = await supabase
+      .from('users')
+      .select('id, name, email, role, project_id, projects(name)')
+      .eq('role', 'manager')
+      .eq('created_by', user.id);
+
+    if (!error) setManagers(data || []);
+    setLoading(false);
   };
 
-  const handleApproveRequest = (id) => {
-    setRequests(requests.filter(r => r.id !== id));
+  const deactivateManager = async (id) => {
+    if (!confirm('Deactivate this manager? They will lose access immediately.')) return;
+
+    const { error } = await supabase
+      .from('users')
+      .update({ role: 'inactive' })
+      .eq('id', id);
+
+    if (error) {
+      alert('Failed to deactivate manager.');
+      return;
+    }
+    fetchManagers();
   };
 
-  const handleRejectRequest = (id) => {
-    setRequests(requests.filter(r => r.id !== id));
-  };
-
-  const handleAddManager = (e) => {
+  const handleAddManager = async (e) => {
     e.preventDefault();
-    const id = managers.length > 0 ? Math.max(...managers.map(m => m.id)) + 1 : 1;
-    setManagers([...managers, { id, name: newManager.name, email: newManager.email, project: newManager.project, status: 'Active' }]);
-    setIsModalOpen(false);
-    setNewManager({ name: '', email: '', password: '', project: 'Project Alpha' });
+    if (!newManager.name.trim() || !newManager.email.trim() || !newManager.password.trim() || !newManager.project_id) {
+      alert('Please fill all fields.');
+      return;
+    }
+    if (newManager.password.length < 6) {
+      alert('Password must be at least 6 characters.');
+      return;
+    }
+
+    setSubmitting(true);
+
+    try {
+      // Step 1: Create Supabase Auth account
+      const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
+        email: newManager.email.trim(),
+        password: newManager.password
+      });
+
+      if (signUpError) throw signUpError;
+      if (!signUpData?.user) throw new Error('Account creation failed.');
+
+      // Step 2: Insert into users table
+      const { error: insertError } = await supabase.from('users').insert({
+        id: signUpData.user.id,
+        name: newManager.name.trim(),
+        email: newManager.email.trim(),
+        role: 'manager',
+        project_id: newManager.project_id,
+        created_by: user.id
+      });
+
+      if (insertError) throw insertError;
+
+      setIsModalOpen(false);
+      setNewManager({ name: '', email: '', password: '', project_id: '' });
+      fetchManagers();
+      alert('Manager created successfully. They can log in immediately.');
+
+    } catch (err) {
+      console.error('Add manager failed:', err);
+      alert(err.message || 'Failed to create manager.');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
     <div className="max-w-5xl mx-auto space-y-8">
       <div>
         <h1 className="text-2xl font-bold text-white">Admin Settings</h1>
-        <p className="text-text-muted mt-1">Manage your team and access requests</p>
+        <p className="text-text-muted mt-1">Manage your team</p>
       </div>
-
-      {/* Access Requests */}
-      {requests.length > 0 && (
-        <div className="space-y-4">
-          <h2 className="text-lg font-bold text-white flex items-center">
-            <Shield className="w-5 h-5 mr-2 text-warning" /> Pending Access Requests
-          </h2>
-          <div className="grid gap-4">
-            {requests.map(req => (
-              <div key={req.id} className="card p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 border-warning/30 bg-warning/5">
-                <div>
-                  <h3 className="font-semibold text-white">{req.managerName} <span className="text-text-muted font-normal">• {req.project}</span></h3>
-                  <p className="text-sm text-text-muted mt-1">Requesting manual edit access: "{req.reason}"</p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <button onClick={() => handleRejectRequest(req.id)} className="btn-danger flex items-center py-1.5 px-3">
-                    <X className="w-4 h-4 mr-1" /> Reject
-                  </button>
-                  <button onClick={() => handleApproveRequest(req.id)} className="btn-primary bg-success hover:bg-emerald-600 flex items-center py-1.5 px-3">
-                    <Check className="w-4 h-4 mr-1" /> Approve
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
 
       {/* Manage Team */}
       <div className="space-y-4">
@@ -77,41 +112,49 @@ export default function Settings() {
         </div>
 
         <div className="card overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-left border-collapse">
-              <thead>
-                <tr className="bg-navy border-b border-border">
-                  <th className="p-4 text-xs font-semibold text-text-muted uppercase tracking-wider">Manager</th>
-                  <th className="p-4 text-xs font-semibold text-text-muted uppercase tracking-wider">Assigned Project</th>
-                  <th className="p-4 text-xs font-semibold text-text-muted uppercase tracking-wider">Status</th>
-                  <th className="p-4 text-xs font-semibold text-text-muted uppercase tracking-wider text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {managers.map(manager => (
-                  <tr key={manager.id} className="border-b border-border/50 hover:bg-navy-lighter/30 transition-colors">
-                    <td className="p-4">
-                      <p className="font-medium text-white">{manager.name}</p>
-                      <p className="text-xs text-text-muted">{manager.email}</p>
-                    </td>
-                    <td className="p-4 text-sm text-text-main">{manager.project}</td>
-                    <td className="p-4">
-                      <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium border ${manager.status === 'Active' ? 'bg-success/10 text-success border-success/20' : 'bg-text-muted/10 text-text-muted border-text-muted/20'}`}>
-                        {manager.status}
-                      </span>
-                    </td>
-                    <td className="p-4 text-right">
-                      {manager.status === 'Active' && (
-                        <button onClick={() => deactivateManager(manager.id)} className="text-xs text-danger hover:text-red-400 font-medium transition-colors">
-                          Deactivate
-                        </button>
-                      )}
-                    </td>
+          {loading ? (
+            <div className="p-8 flex justify-center">
+              <Loader2 className="w-6 h-6 text-primary animate-spin" />
+            </div>
+          ) : managers.length === 0 ? (
+            <div className="p-8 text-center text-text-muted text-sm">No managers added yet.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-navy border-b border-border">
+                    <th className="p-4 text-xs font-semibold text-text-muted uppercase tracking-wider">Manager</th>
+                    <th className="p-4 text-xs font-semibold text-text-muted uppercase tracking-wider">Assigned Project</th>
+                    <th className="p-4 text-xs font-semibold text-text-muted uppercase tracking-wider">Status</th>
+                    <th className="p-4 text-xs font-semibold text-text-muted uppercase tracking-wider text-right">Actions</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody>
+                  {managers.map(manager => (
+                    <tr key={manager.id} className="border-b border-border/50 hover:bg-navy-lighter/30 transition-colors">
+                      <td className="p-4">
+                        <p className="font-medium text-white">{manager.name}</p>
+                        <p className="text-xs text-text-muted">{manager.email}</p>
+                      </td>
+                      <td className="p-4 text-sm text-text-main">{manager.projects?.name || '—'}</td>
+                      <td className="p-4">
+                        <span className={`inline-flex items-center px-2 py-1 rounded-md text-xs font-medium border ${manager.role === 'manager' ? 'bg-success/10 text-success border-success/20' : 'bg-text-muted/10 text-text-muted border-text-muted/20'}`}>
+                          {manager.role === 'manager' ? 'Active' : 'Inactive'}
+                        </span>
+                      </td>
+                      <td className="p-4 text-right">
+                        {manager.role === 'manager' && (
+                          <button onClick={() => deactivateManager(manager.id)} className="text-xs text-danger hover:text-red-400 font-medium transition-colors">
+                            Deactivate
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </div>
 
@@ -125,7 +168,7 @@ export default function Settings() {
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <form onSubmit={handleAddManager} className="p-6 space-y-4">
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-text-muted">Full Name</label>
@@ -133,29 +176,27 @@ export default function Settings() {
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-text-muted">Email Address</label>
-                <input required type="email" value={newManager.email} onChange={e => setNewManager({...newManager, email: e.target.value})} className="input-field" placeholder="amit@demo.com" />
+                <input required type="email" value={newManager.email} onChange={e => setNewManager({...newManager, email: e.target.value})} className="input-field" placeholder="amit@gmail.com" />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-text-muted">Temporary Password</label>
-                <input required type="text" value={newManager.password} onChange={e => setNewManager({...newManager, password: e.target.value})} className="input-field" placeholder="Password" />
+                <input required type="text" minLength={6} value={newManager.password} onChange={e => setNewManager({...newManager, password: e.target.value})} className="input-field" placeholder="Min 6 characters" />
               </div>
               <div className="space-y-1.5">
                 <label className="text-sm font-medium text-text-muted">Assign Project</label>
-                <select value={newManager.project} onChange={e => setNewManager({...newManager, project: e.target.value})} className="input-field appearance-none">
-                  <option value="Project Alpha">Project Alpha</option>
-                  <option value="Project Beta">Project Beta</option>
-                  <option value="Project Gamma">Project Gamma</option>
-                  <option value="Project Delta">Project Delta</option>
+                <select required value={newManager.project_id} onChange={e => setNewManager({...newManager, project_id: e.target.value})} className="input-field appearance-none">
+                  <option value="">Select a project</option>
+                  {projects?.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
                 </select>
               </div>
-              <div className="space-y-1.5 pt-2">
-                <label className="text-sm font-medium text-text-muted">Role</label>
-                <input type="text" value="Manager" disabled className="input-field bg-navy-lighter text-text-muted cursor-not-allowed opacity-70" />
-              </div>
-              
+
               <div className="pt-4 flex gap-3">
-                <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary flex-1">Cancel</button>
-                <button type="submit" className="btn-primary flex-1">Create Account</button>
+                <button type="button" onClick={() => setIsModalOpen(false)} className="btn-secondary flex-1" disabled={submitting}>Cancel</button>
+                <button type="submit" className="btn-primary flex-1" disabled={submitting}>
+                  {submitting ? <Loader2 className="w-4 h-4 animate-spin mx-auto" /> : 'Create Account'}
+                </button>
               </div>
             </form>
           </div>

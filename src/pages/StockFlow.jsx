@@ -10,6 +10,7 @@ import { extractExcelWithGemini } from "../services/geminiExcel";
 export default function StockFlow({ type, user }) {
   const [step, setStep] = useState(1); // 1: Upload, 2: Loading, 3: Confirm, 4: Success, 5: Processing DB
   const [items, setItems] = useState([]);
+  const [billImageUrl, setBillImageUrl] = useState(null);
   const navigate = useNavigate();
   const { currentProject } = useContext(ProjectContext);
   
@@ -22,12 +23,42 @@ export default function StockFlow({ type, user }) {
   // Reset step when type changes
   useEffect(() => {
     setStep(1);
+    setBillImageUrl(null);
   }, [type]);
+
+  const uploadBillImage = async (file) => {
+    if (!currentProjectId) {
+      throw new Error('No project selected');
+    }
+
+    const safeFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '-');
+    const filePath = `${currentProjectId}/${Date.now()}-${crypto.randomUUID()}-${safeFileName}`;
+
+    const { error } = await supabase.storage
+      .from('bill-images')
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (error) throw error;
+
+    const { data } = supabase.storage
+      .from('bill-images')
+      .getPublicUrl(filePath);
+
+    return data.publicUrl;
+  };
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
     if (!file) return;
+    if (!currentProjectId) {
+      alert('No project selected. Please contact your administrator.');
+      return;
+    }
 
+    setBillImageUrl(null);
     setStep(2);
 
     const reader = new FileReader();
@@ -39,6 +70,9 @@ export default function StockFlow({ type, user }) {
         if (!base64) {
           throw new Error('Image could not be read');
         }
+
+        const uploadedBillImageUrl = await uploadBillImage(file);
+        setBillImageUrl(uploadedBillImageUrl);
 
         const response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY}`,
@@ -251,7 +285,7 @@ export default function StockFlow({ type, user }) {
             project_id: currentProjectId,
             type: 'inward',
             qty: item.qty,
-            bill_image_url: null,
+            bill_image_url: billImageUrl,
             confirmed_by: currentUserId,
             timestamp: now
           });
@@ -280,7 +314,7 @@ export default function StockFlow({ type, user }) {
             project_id: currentProjectId,
             type: 'outward',
             qty: item.qty,
-            bill_image_url: null,
+            bill_image_url: billImageUrl,
             confirmed_by: currentUserId,
             timestamp: now
           });
@@ -441,7 +475,7 @@ export default function StockFlow({ type, user }) {
                 </div>
               </div>
               <div className="p-4 border-t border-border bg-navy-light flex justify-end gap-3">
-                <button onClick={() => setStep(1)} className="btn-secondary">Cancel</button>
+                <button onClick={() => { setBillImageUrl(null); setStep(1); }} className="btn-secondary">Cancel</button>
                 <button onClick={handleConfirm} className="btn-primary bg-success hover:bg-emerald-600 shadow-[0_0_15px_rgba(16,185,129,0.3)]">
                   Confirm & {isAdd ? 'Add to Stock' : 'Deduct from Stock'}
                 </button>
@@ -452,13 +486,11 @@ export default function StockFlow({ type, user }) {
           <div className="card p-4 h-[500px] flex flex-col">
             <h3 className="font-semibold text-white mb-4 border-b border-border pb-3">Bill Preview</h3>
             <div className="flex-1 bg-navy border border-border rounded-lg flex items-center justify-center relative overflow-hidden">
-              {/* Mock bill preview */}
-              <div className="absolute inset-0 opacity-20 pointer-events-none" style={{
-                backgroundImage: 'repeating-linear-gradient(45deg, #1E293B 25%, transparent 25%, transparent 75%, #1E293B 75%, #1E293B), repeating-linear-gradient(45deg, #1E293B 25%, transparent 25%, transparent 75%, #1E293B 75%, #1E293B)',
-                backgroundPosition: '0 0, 10px 10px',
-                backgroundSize: '20px 20px'
-              }}></div>
-              <FileText className="w-16 h-16 text-text-muted opacity-50" />
+              {billImageUrl ? (
+                <img src={billImageUrl} alt="Uploaded bill" className="w-full h-full object-contain" />
+              ) : (
+                <FileText className="w-16 h-16 text-text-muted opacity-50" />
+              )}
             </div>
           </div>
         </div>

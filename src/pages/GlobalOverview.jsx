@@ -1,6 +1,6 @@
 import { useState, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MapPin, Package, Activity, AlertTriangle, ArrowRight, Loader2, Plus } from 'lucide-react';
+import { MapPin, Package, Activity, AlertTriangle, ArrowRight, Loader2, Plus, Trash2 } from 'lucide-react';
 import { supabase } from '../supabase';
 import { ProjectContext } from '../context/ProjectContext';
 
@@ -14,6 +14,7 @@ export default function GlobalOverview({ user }) {
   const [newProjectName, setNewProjectName] = useState('');
   const [newProjectLocation, setNewProjectLocation] = useState('');
   const [creating, setCreating] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
 
   const fetchOverviewData = async () => {
       setLoading(true);
@@ -108,9 +109,33 @@ export default function GlobalOverview({ user }) {
       alert('Warehouse created successfully');
     } catch (err) {
       console.error(err);
-      alert(`Failed to create warehouse: ${err.message || 'Unknown error'}`);
+      alert('Failed to create warehouse');
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleDeleteProject = async (e, projectId, projectName) => {
+    e.stopPropagation();
+    if (!confirm(`Delete "${projectName}"? This will permanently delete all products, stock, and transaction history for this project. This cannot be undone.`)) return;
+
+    setDeletingId(projectId);
+    try {
+      await supabase.from('alerts').delete().eq('project_id', projectId);
+      await supabase.from('transactions').delete().eq('project_id', projectId);
+      await supabase.from('stock').delete().eq('project_id', projectId);
+      await supabase.from('products').delete().eq('project_id', projectId);
+      const { error } = await supabase.from('projects').delete().eq('id', projectId);
+
+      if (error) throw error;
+
+      await fetchProjects();
+      await fetchOverviewData();
+    } catch (err) {
+      console.error('Failed to delete project:', err);
+      alert('Failed to delete project.');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -150,12 +175,26 @@ export default function GlobalOverview({ user }) {
                     {project.location || 'No location set'}
                   </div>
                 </div>
-                {project.activeAlerts > 0 && (
-                  <div className="bg-danger/10 border border-danger/30 text-danger px-2 py-1 rounded-md flex items-center text-xs font-bold shadow-[0_0_10px_rgba(239,68,68,0.2)]">
-                    <AlertTriangle className="w-3 h-3 mr-1" />
-                    {project.activeAlerts} {project.activeAlerts === 1 ? 'Alert' : 'Alerts'}
-                  </div>
-                )}
+                <div className="flex items-center gap-2">
+                  {project.activeAlerts > 0 && (
+                    <div className="bg-danger/10 border border-danger/30 text-danger px-2 py-1 rounded-md flex items-center text-xs font-bold shadow-[0_0_10px_rgba(239,68,68,0.2)]">
+                      <AlertTriangle className="w-3 h-3 mr-1" />
+                      {project.activeAlerts} {project.activeAlerts === 1 ? 'Alert' : 'Alerts'}
+                    </div>
+                  )}
+                  <button
+                    onClick={(e) => handleDeleteProject(e, project.id, project.name)}
+                    disabled={deletingId === project.id}
+                    className="p-1.5 text-text-muted hover:text-danger hover:bg-danger/10 rounded-md transition-colors disabled:opacity-50"
+                    title="Delete project"
+                  >
+                    {deletingId === project.id ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="w-4 h-4" />
+                    )}
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4 mb-6">

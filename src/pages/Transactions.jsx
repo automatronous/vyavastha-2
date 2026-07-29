@@ -71,18 +71,19 @@ export default function Transactions() {
                 <th className="p-4 text-xs font-semibold text-text-muted uppercase tracking-wider whitespace-nowrap">Product</th>
                 <th className="p-4 text-xs font-semibold text-text-muted uppercase tracking-wider whitespace-nowrap">Type</th>
                 <th className="p-4 text-xs font-semibold text-text-muted uppercase tracking-wider whitespace-nowrap text-right">Qty</th>
+                <th className="p-4 text-xs font-semibold text-text-muted uppercase tracking-wider whitespace-nowrap">Bill</th>
               </tr>
             </thead>
             <tbody>
               {loading ? (
                 <tr>
-                  <td colSpan="4" className="p-8 text-center text-text-muted">
+                  <td colSpan="5" className="p-8 text-center text-text-muted">
                     <Loader2 className="w-6 h-6 animate-spin mx-auto text-primary" />
                   </td>
                 </tr>
               ) : filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan="4" className="p-8 text-center text-text-muted">
+                  <td colSpan="5" className="p-8 text-center text-text-muted">
                     No transactions found.
                   </td>
                 </tr>
@@ -102,6 +103,15 @@ export default function Transactions() {
                       </div>
                     </td>
                     <td className="p-4 text-sm font-medium text-white text-right">{txn.qty}</td>
+                    <td className="p-4">
+                      {txn.bill_image_url ? (
+                        <a href={txn.bill_image_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-sm">
+                          View Bill
+                        </a>
+                      ) : (
+                        <span className="text-text-muted text-sm">—</span>
+                      )}
+                    </td>
                   </tr>
                 ))
               )}
