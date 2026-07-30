@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Package } from 'lucide-react';
+import { Eye, EyeOff, Package } from 'lucide-react';
 import { supabase } from '../supabase';
 
 export default function Login({ onLogin }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
 
   const handleSubmit = async (e) => {
@@ -19,7 +20,7 @@ export default function Login({ onLogin }) {
     }
 
     if (data?.user) {
-      const { data: userData, error: userError } = await supabase
+      const { data: userData } = await supabase
         .from('users')
         .select('*')
         .eq('id', data.user.id)
@@ -81,14 +82,28 @@ export default function Login({ onLogin }) {
           
           <div className="space-y-2">
             <label className="text-sm font-medium text-text-muted">Password</label>
-            <input 
-              type="password" 
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="input-field"
-              placeholder="Enter your password"
-              required
-            />
+            <div className="relative">
+              <input 
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="input-field pr-12"
+                placeholder="Enter your password"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((current) => !current)}
+                className="absolute inset-y-0 right-0 flex items-center px-3 text-text-muted hover:text-white transition-colors"
+                aria-label={showPassword ? 'Hide password' : 'Show password'}
+              >
+                {showPassword ? (
+                  <EyeOff className="h-5 w-5" />
+                ) : (
+                  <Eye className="h-5 w-5" />
+                )}
+              </button>
+            </div>
           </div>
 
           <button type="submit" className="btn-primary w-full py-3 text-lg mt-4 shadow-[0_0_15px_rgba(59,130,246,0.4)] hover:shadow-[0_0_25px_rgba(59,130,246,0.6)]">
