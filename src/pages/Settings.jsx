@@ -20,11 +20,26 @@ export default function Settings({ user }) {
 
   const fetchManagers = async () => {
     setLoading(true);
+
+    // Get all project IDs belonging to this admin
+    const { data: adminProjects } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('admin_id', user.id);
+
+    const projectIds = adminProjects?.map(p => p.id) || [];
+
+    if (projectIds.length === 0) {
+      setManagers([]);
+      setLoading(false);
+      return;
+    }
+
     const { data, error } = await supabase
       .from('users')
       .select('id, name, email, role, project_id, projects(name)')
       .eq('role', 'manager')
-      .eq('created_by', user.id);
+      .in('project_id', projectIds);
 
     if (!error) setManagers(data || []);
     setLoading(false);
@@ -59,7 +74,11 @@ export default function Settings({ user }) {
     setSubmitting(true);
 
     try {
-      // Step 1: Create Supabase Auth account
+      // Save the admin's current session before signUp() overwrites it
+      const { data: adminSessionData } = await supabase.auth.getSession();
+      const adminSession = adminSessionData.session;
+
+      // Step 1: Create Supabase Auth account (this switches the active session to the new manager)
       const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
         email: newManager.email.trim(),
         password: newManager.password
@@ -68,7 +87,15 @@ export default function Settings({ user }) {
       if (signUpError) throw signUpError;
       if (!signUpData?.user) throw new Error('Account creation failed.');
 
-      // Step 2: Insert into users table
+      // Restore the admin's session immediately so the insert below runs as admin
+      if (adminSession) {
+        await supabase.auth.setSession({
+          access_token: adminSession.access_token,
+          refresh_token: adminSession.refresh_token
+        });
+      }
+
+      // Step 2: Insert into users table (now runs as admin again)
       const { error: insertError } = await supabase.from('users').insert({
         id: signUpData.user.id,
         name: newManager.name.trim(),
