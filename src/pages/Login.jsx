@@ -32,7 +32,7 @@ export default function Login({ onLogin }) {
           role: userData.role || 'manager',
           name: userData.name || data.user.email,
           email: data.user.email,
-          admin_id: userData.admin_id,
+          created_by: userData.created_by,
           project_id: userData.project_id
         });
       } else {

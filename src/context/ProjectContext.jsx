@@ -18,8 +18,8 @@ export const ProjectProvider = ({ user, children }) => {
     setProjectsLoading(true);
     
     try {
-      // If admin, fetch their projects. If manager, fetch their admin's projects.
-      const queryAdminId = user.role === 'admin' ? user.id : user.admin_id;
+      // If admin, fetch their projects. If manager, fetch their admin's (created_by) projects.
+      const queryAdminId = user.role === 'admin' ? user.id : user.created_by;
       
       if (!queryAdminId) {
         setProjects([]);
