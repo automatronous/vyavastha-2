@@ -20,11 +20,26 @@ export default function Settings({ user }) {
 
   const fetchManagers = async () => {
     setLoading(true);
+
+    // Get all project IDs belonging to this admin
+    const { data: adminProjects } = await supabase
+      .from('projects')
+      .select('id')
+      .eq('admin_id', user.id);
+
+    const projectIds = adminProjects?.map(p => p.id) || [];
+
+    if (projectIds.length === 0) {
+      setManagers([]);
+      setLoading(false);
+      return;
+    }
+
     const { data, error } = await supabase
       .from('users')
       .select('id, name, email, role, project_id, projects(name)')
       .eq('role', 'manager')
-      .eq('created_by', user.id);
+      .in('project_id', projectIds);
 
     if (!error) setManagers(data || []);
     setLoading(false);
