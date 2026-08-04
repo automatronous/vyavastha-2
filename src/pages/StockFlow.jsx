@@ -94,7 +94,7 @@ export default function StockFlow({ type, user }) {
                   ONLY a JSON array, no markdown, 
                   no backticks, no explanation.
                   Format: [{"name":"product name","qty":100,"unit":"Pcs"}]
-                  If unit not clear use Pcs as default.`
+                  If unit not clear use Pcs as default.Extract EVERY SINGLE line item from this document, no matter how many there are. Do not skip or summarize any rows. Return ALL items found, even if there are 50+ items.`
                   }
                 ]
               }]
@@ -366,7 +366,7 @@ export default function StockFlow({ type, user }) {
     id="billUpload"
     type="file"
     className="hidden"
-    accept="image/*"
+    accept="image/*,.pdf"
     onChange={handleFileUpload}
 />
 
@@ -381,7 +381,7 @@ export default function StockFlow({ type, user }) {
             <UploadCloud className="w-8 h-8 text-primary" />
           </div>
           <h3 className="text-xl font-medium text-white mb-2">Drop bill image here or click to upload</h3>
-          <p className="text-text-muted text-sm mb-8">Supported formats: JPG • PNG • XLSX • XLS • CSV</p>
+          <p className="text-text-muted text-sm mb-8">Supported formats: JPG • PNG • PDF • XLSX • XLS • CSV </p>
           
           <div className="flex justify-center gap-4">
 
