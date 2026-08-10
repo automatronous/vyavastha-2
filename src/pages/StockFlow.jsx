@@ -7,24 +7,70 @@ import * as XLSX from "xlsx";
 import Papa from "papaparse";
 import { extractExcelWithGemini } from "../services/geminiExcel";
 
+const BILLS_BUCKET = 'bills'; // single source of truth for the bucket name
+
 export default function StockFlow({ type, user }) {
   const [step, setStep] = useState(1); // 1: Upload, 2: Loading, 3: Confirm, 4: Success, 5: Processing DB
   const [items, setItems] = useState([]);
   const [billImageUrl, setBillImageUrl] = useState(null);
+  const [billFileType, setBillFileType] = useState(null); // 'pdf' | 'image' | null
   const navigate = useNavigate();
   const { currentProject } = useContext(ProjectContext);
-  
+
   const currentProjectId = currentProject?.id;
-  
+
   const isAdd = type === 'add';
   const title = isAdd ? "Upload Bill to Add Stock" : "Upload Bill to Deduct Stock";
   const confirmTitle = isAdd ? "Confirm Extracted Items" : "Confirm Items to Deduct";
-  
+
   // Reset step when type changes
   useEffect(() => {
     setStep(1);
     setBillImageUrl(null);
+    setBillFileType(null);
   }, [type]);
+
+  const compressImage = (file) => {
+    return new Promise((resolve) => {
+      if (!file.type.startsWith('image/')) {
+        resolve(file); // skip compression for PDFs
+        return;
+      }
+      const img = new Image();
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const maxWidth = 1600;
+          const scale = Math.min(1, maxWidth / img.width);
+          canvas.width = img.width * scale;
+          canvas.height = img.height * scale;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          canvas.toBlob((blob) => {
+            resolve(new File([blob], file.name, { type: 'image/jpeg' }));
+          }, 'image/jpeg', 0.8);
+        };
+        img.src = e.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  // Detect file type up-front from the ORIGINAL file, not from the resulting URL.
+  // This avoids bugs where a signed URL's query string or encoding confuses
+  // a ".pdf" substring check.
+  const getFileKind = (file) => {
+    const mime = (file.type || '').toLowerCase();
+    if (mime === 'application/pdf') return 'pdf';
+    if (mime.startsWith('image/')) return 'image';
+
+    // Fallback to extension if MIME type is missing/unreliable
+    const ext = file.name.split('.').pop()?.toLowerCase();
+    if (ext === 'pdf') return 'pdf';
+    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) return 'image';
+    return null;
+  };
 
   const uploadBillImage = async (file) => {
     if (!currentProjectId) {
@@ -35,19 +81,46 @@ export default function StockFlow({ type, user }) {
     const filePath = `${currentProjectId}/${Date.now()}-${crypto.randomUUID()}-${safeFileName}`;
 
     const { error } = await supabase.storage
-      .from('bill-images')
+      .from(BILLS_BUCKET)
       .upload(filePath, file, {
         cacheControl: '3600',
-        upsert: false
+        upsert: false,
+        contentType: file.type || undefined, // ensure correct MIME so preview renders properly
       });
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase upload error:', error);
+      throw new Error(`Upload failed: ${error.message}`);
+    }
 
-    const { data } = supabase.storage
-      .from('bill-images')
+    // Try a public URL first (works if the "bills" bucket is public).
+    const { data: publicData } = supabase.storage
+      .from(BILLS_BUCKET)
       .getPublicUrl(filePath);
 
-    return data.publicUrl;
+    if (publicData?.publicUrl) {
+      // Verify the public URL is actually reachable — if the bucket is
+      // private, Supabase still returns a URL object but it will 400/403.
+      try {
+        const head = await fetch(publicData.publicUrl, { method: 'HEAD' });
+        if (head.ok) return publicData.publicUrl;
+      } catch {
+        // network hiccup — fall through to signed URL
+      }
+    }
+
+    // Fall back to a signed URL if the bucket is private or the public
+    // URL wasn't reachable.
+    const { data: signedData, error: signedErr } = await supabase.storage
+      .from(BILLS_BUCKET)
+      .createSignedUrl(filePath, 60 * 60); // 1 hour
+
+    if (signedErr) {
+      console.error('Signed URL error:', signedErr);
+      throw new Error(`Could not generate a preview URL: ${signedErr.message}`);
+    }
+
+    return signedData.signedUrl;
   };
 
   const handleFileUpload = (e) => {
@@ -59,19 +132,21 @@ export default function StockFlow({ type, user }) {
     }
 
     setBillImageUrl(null);
+    setBillFileType(getFileKind(file));
     setStep(2);
 
     const reader = new FileReader();
-    
+
     reader.onloadend = async () => {
       try {
         const base64 = reader.result?.split(',')[1];
-        
+
         if (!base64) {
           throw new Error('Image could not be read');
         }
 
-        const uploadedBillImageUrl = await uploadBillImage(file);
+        const compressedFile = await compressImage(file);
+        const uploadedBillImageUrl = await uploadBillImage(compressedFile);
         setBillImageUrl(uploadedBillImageUrl);
 
         const response = await fetch(
@@ -114,7 +189,7 @@ export default function StockFlow({ type, user }) {
 
         const cleaned = text.replace(/```json|```/g, '').trim();
         const parsedItems = JSON.parse(cleaned);
-        
+
         const newItems = parsedItems.map((item, index) => ({
           id: index + 1,
           name: item.name || '',
@@ -127,7 +202,7 @@ export default function StockFlow({ type, user }) {
 
       } catch (err) {
         console.error('Gemini error:', err);
-        alert('Could not read bill. Please try again.');
+        alert(err.message || 'Could not read bill. Please try again.');
         setItems([]);
         setStep(3);
       }
@@ -143,60 +218,60 @@ export default function StockFlow({ type, user }) {
   };
 
   const handleExcelUpload = async (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
+    const file = e.target.files[0];
+    if (!file) return;
 
-  const extension = file.name.split(".").pop().toLowerCase();
+    const extension = file.name.split(".").pop().toLowerCase();
 
-  // ---------- CSV ----------
-  if (extension === "csv") {
-    Papa.parse(file, {
-      header: true,
-      skipEmptyLines: true,
-      complete: async (results) => {
-        try {
-          const imported = await extractExcelWithGemini(results.data);
+    // ---------- CSV ----------
+    if (extension === "csv") {
+      Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: async (results) => {
+          try {
+            const imported = await extractExcelWithGemini(results.data);
 
-          setItems(imported);
-          setStep(3);
-        } catch (err) {
-          console.error(err);
-          alert("Unable to process CSV using Gemini.");
-        }
-      },
-      error: () => {
-        alert("Unable to read CSV file.");
-      },
-    });
-
-    return;
-  }
-
-  // ---------- XLSX / XLS ----------
-  const reader = new FileReader();
-
-  reader.onload = async (event) => {
-    try {
-      const workbook = XLSX.read(event.target.result, {
-        type: "array",
+            setItems(imported);
+            setStep(3);
+          } catch (err) {
+            console.error(err);
+            alert("Unable to process CSV using Gemini.");
+          }
+        },
+        error: () => {
+          alert("Unable to read CSV file.");
+        },
       });
 
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-
-      const rows = XLSX.utils.sheet_to_json(sheet);
-
-      const imported = await extractExcelWithGemini(rows);
-
-      setItems(imported);
-      setStep(3);
-    } catch (err) {
-      console.error(err);
-      alert("Unable to process Excel file.");
+      return;
     }
-  };
 
-  reader.readAsArrayBuffer(file);
-};
+    // ---------- XLSX / XLS ----------
+    const reader = new FileReader();
+
+    reader.onload = async (event) => {
+      try {
+        const workbook = XLSX.read(event.target.result, {
+          type: "array",
+        });
+
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+
+        const rows = XLSX.utils.sheet_to_json(sheet);
+
+        const imported = await extractExcelWithGemini(rows);
+
+        setItems(imported);
+        setStep(3);
+      } catch (err) {
+        console.error(err);
+        alert("Unable to process Excel file.");
+      }
+    };
+
+    reader.readAsArrayBuffer(file);
+  };
 
 
   const handleConfirm = async () => {
@@ -360,47 +435,47 @@ export default function StockFlow({ type, user }) {
     return (
       <div className="max-w-3xl mx-auto">
         <h1 className="text-2xl font-bold text-white mb-6">{title}</h1>
-        
+
         <label className="card p-8 md:p-12 text-center border-dashed border-2 border-border hover:border-primary/50 transition-colors cursor-pointer group block">
           <input
-    id="billUpload"
-    type="file"
-    className="hidden"
-    accept="image/*,.pdf"
-    onChange={handleFileUpload}
-/>
+            id="billUpload"
+            type="file"
+            className="hidden"
+            accept="image/*,.pdf"
+            onChange={handleFileUpload}
+          />
 
-<input
-    id="excelUpload"
-    type="file"
-    className="hidden"
-    accept=".xlsx,.xls,.csv"
-    onChange={handleExcelUpload}
-/>
+          <input
+            id="excelUpload"
+            type="file"
+            className="hidden"
+            accept=".xlsx,.xls,.csv"
+            onChange={handleExcelUpload}
+          />
           <div className="w-16 h-16 bg-navy rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform">
             <UploadCloud className="w-8 h-8 text-primary" />
           </div>
           <h3 className="text-xl font-medium text-white mb-2">Drop bill image here or click to upload</h3>
           <p className="text-text-muted text-sm mb-8">Supported formats: JPG • PNG • PDF • XLSX • XLS • CSV </p>
-          
+
           <div className="flex justify-center gap-4">
 
-  <label
-    htmlFor="billUpload"
-    className="btn-primary cursor-pointer inline-flex items-center justify-center min-w-[180px]"
-  >
-    <FileText className="w-5 h-5 mr-2" />
-    Scan Bill
-  </label>
+            <label
+              htmlFor="billUpload"
+              className="btn-primary cursor-pointer inline-flex items-center justify-center min-w-[180px]"
+            >
+              <FileText className="w-5 h-5 mr-2" />
+              Scan Bill
+            </label>
 
-  <label
-    htmlFor="excelUpload"
-    className="btn-secondary cursor-pointer inline-flex items-center justify-center min-w-[180px]"
-  >
-    📊 Import Excel
-  </label>
+            <label
+              htmlFor="excelUpload"
+              className="btn-secondary cursor-pointer inline-flex items-center justify-center min-w-[180px]"
+            >
+              📊 Import Excel
+            </label>
 
-</div>
+          </div>
         </label>
       </div>
     );
@@ -420,7 +495,7 @@ export default function StockFlow({ type, user }) {
     return (
       <div className="max-w-6xl mx-auto">
         <h1 className="text-2xl font-bold text-white mb-6">{confirmTitle}</h1>
-        
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-6">
             <div className="card overflow-hidden">
@@ -435,25 +510,25 @@ export default function StockFlow({ type, user }) {
                   {items.map((item) => (
                     <div key={item.id} className="flex items-center gap-3 bg-navy p-3 rounded-lg border border-border">
                       <div className="flex-1">
-                        <input 
-                          type="text" 
-                          value={item.name} 
+                        <input
+                          type="text"
+                          value={item.name}
                           onChange={(e) => updateItem(item.id, 'name', e.target.value)}
                           className="input-field py-1.5 text-sm"
                           placeholder="Item Name"
                         />
                       </div>
                       <div className="w-24">
-                        <input 
-                          type="number" 
-                          value={item.qty} 
+                        <input
+                          type="number"
+                          value={item.qty}
                           onChange={(e) => updateItem(item.id, 'qty', parseInt(e.target.value) || 0)}
                           className="input-field py-1.5 text-sm"
                           placeholder="Qty"
                         />
                       </div>
                       <div className="w-24">
-                        <select 
+                        <select
                           value={item.unit}
                           onChange={(e) => updateItem(item.id, 'unit', e.target.value)}
                           className="input-field py-1.5 text-sm appearance-none bg-navy-light"
@@ -464,7 +539,7 @@ export default function StockFlow({ type, user }) {
                           <option value="bags">bags</option>
                         </select>
                       </div>
-                      <button 
+                      <button
                         onClick={() => deleteItem(item.id)}
                         className="p-2 text-text-muted hover:text-danger hover:bg-danger/10 rounded-md transition-colors"
                       >
@@ -475,19 +550,23 @@ export default function StockFlow({ type, user }) {
                 </div>
               </div>
               <div className="p-4 border-t border-border bg-navy-light flex justify-end gap-3">
-                <button onClick={() => { setBillImageUrl(null); setStep(1); }} className="btn-secondary">Cancel</button>
+                <button onClick={() => { setBillImageUrl(null); setBillFileType(null); setStep(1); }} className="btn-secondary">Cancel</button>
                 <button onClick={handleConfirm} className="btn-primary bg-success hover:bg-emerald-600 shadow-[0_0_15px_rgba(16,185,129,0.3)]">
                   Confirm & {isAdd ? 'Add to Stock' : 'Deduct from Stock'}
                 </button>
               </div>
             </div>
           </div>
-          
+
           <div className="card p-4 h-[500px] flex flex-col">
             <h3 className="font-semibold text-white mb-4 border-b border-border pb-3">Bill Preview</h3>
             <div className="flex-1 bg-navy border border-border rounded-lg flex items-center justify-center relative overflow-hidden">
               {billImageUrl ? (
-                <img src={billImageUrl} alt="Uploaded bill" className="w-full h-full object-contain" />
+                billFileType === 'pdf' ? (
+                  <iframe src={billImageUrl} className="w-full h-full" title="Bill PDF preview" />
+                ) : (
+                  <img src={billImageUrl} alt="Uploaded bill" className="w-full h-full object-contain" />
+                )
               ) : (
                 <FileText className="w-16 h-16 text-text-muted opacity-50" />
               )}
