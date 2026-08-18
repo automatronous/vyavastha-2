@@ -238,9 +238,8 @@ Return ALL items found, even if there are 50+ items.`
               .catch(() => ({}));
 
           throw new Error(
-            `Gemini API Error (${response.status}): ${
-              errData.error?.message ||
-              response.statusText
+            `Gemini API Error (${response.status}): ${errData.error?.message ||
+            response.statusText
             }`
           );
         }
@@ -368,7 +367,7 @@ Return ALL items found, even if there are 50+ items.`
 
         const sheet =
           workbook.Sheets[
-            workbook.SheetNames[0]
+          workbook.SheetNames[0]
           ];
 
         const rows =
@@ -517,7 +516,7 @@ Return ALL items found, even if there are 50+ items.`
 
         const existingStock =
           stockRows &&
-          stockRows.length > 0
+            stockRows.length > 0
             ? stockRows[0]
             : null;
 
@@ -535,6 +534,10 @@ Return ALL items found, even if there are 50+ items.`
 
         if (isAdd) {
 
+          const newQty =
+            currentQty +
+            item.qty;
+
           const {
             error: upsertErr
           } = await supabase
@@ -548,8 +551,7 @@ Return ALL items found, even if there are 50+ items.`
                   currentProjectId,
 
                 current_qty:
-                  currentQty +
-                  item.qty,
+                  newQty,
 
                 threshold,
 
@@ -564,6 +566,35 @@ Return ALL items found, even if there are 50+ items.`
 
           if (upsertErr) {
             throw upsertErr;
+          }
+
+          // ─────────────────────────────
+          // Resolve active alert if stock
+          // now meets or exceeds threshold
+          // ─────────────────────────────
+
+          if (newQty >= threshold) {
+            try {
+              const { error: resolveErr } =
+                await supabase
+                  .from('alerts')
+                  .update({ status: 'dismissed' })
+                  .eq('product_id', productId)
+                  .eq('project_id', currentProjectId)
+                  .eq('status', 'active');
+
+              if (resolveErr) {
+                console.error(
+                  'Alert resolve failed:',
+                  resolveErr
+                );
+              }
+            } catch (resolveEx) {
+              console.error(
+                'Alert resolve threw:',
+                resolveEx
+              );
+            }
           }
 
           await supabase
@@ -599,7 +630,7 @@ Return ALL items found, even if there are 50+ items.`
 
           if (
             currentQty -
-              item.qty <
+            item.qty <
             0
           ) {
             alert(
@@ -865,10 +896,10 @@ Return ALL items found, even if there are 50+ items.`
         item =>
           item.id === id
             ? {
-                ...item,
-                [field]:
-                  value
-              }
+              ...item,
+              [field]:
+                value
+            }
             : item
       )
     );
@@ -887,10 +918,10 @@ Return ALL items found, even if there are 50+ items.`
     const newId =
       items.length > 0
         ? Math.max(
-            ...items.map(
-              i => i.id
-            )
-          ) + 1
+          ...items.map(
+            i => i.id
+          )
+        ) + 1
         : 1;
 
     setItems([
