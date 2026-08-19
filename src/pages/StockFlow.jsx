@@ -36,39 +36,55 @@ export default function StockFlow({ type, user }) {
         resolve(file); // skip compression for PDFs
         return;
       }
+
       const img = new Image();
       const reader = new FileReader();
+
       reader.onload = (e) => {
         img.onload = () => {
           const canvas = document.createElement('canvas');
           const maxWidth = 1600;
           const scale = Math.min(1, maxWidth / img.width);
+
           canvas.width = img.width * scale;
           canvas.height = img.height * scale;
+
           const ctx = canvas.getContext('2d');
           ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
           canvas.toBlob((blob) => {
-            resolve(new File([blob], file.name, { type: 'image/jpeg' }));
+            resolve(
+              new File([blob], file.name, {
+                type: 'image/jpeg'
+              })
+            );
           }, 'image/jpeg', 0.8);
         };
+
         img.src = e.target.result;
       };
+
       reader.readAsDataURL(file);
     });
   };
 
-  // Detect file type up-front from the ORIGINAL file, not from the resulting URL.
-  // This avoids bugs where a signed URL's query string or encoding confuses
-  // a ".pdf" substring check.
+  // Detect file type up-front from the ORIGINAL file
   const getFileKind = (file) => {
     const mime = (file.type || '').toLowerCase();
+
     if (mime === 'application/pdf') return 'pdf';
     if (mime.startsWith('image/')) return 'image';
 
-    // Fallback to extension if MIME type is missing/unreliable
     const ext = file.name.split('.').pop()?.toLowerCase();
+
     if (ext === 'pdf') return 'pdf';
-    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) return 'image';
+
+    if (
+      ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)
+    ) {
+      return 'image';
+    }
+
     return null;
   };
 
@@ -77,7 +93,11 @@ export default function StockFlow({ type, user }) {
       throw new Error('No project selected');
     }
 
-    const safeFileName = file.name.replace(/[^a-zA-Z0-9.-]/g, '-');
+    const safeFileName = file.name.replace(
+      /[^a-zA-Z0-9.-]/g,
+      '-'
+    );
+
     const filePath = `${currentProjectId}/${Date.now()}-${crypto.randomUUID()}-${safeFileName}`;
 
     const { error } = await supabase.storage
@@ -85,7 +105,7 @@ export default function StockFlow({ type, user }) {
       .upload(filePath, file, {
         cacheControl: '3600',
         upsert: false,
-        contentType: file.type || undefined, // ensure correct MIME so preview renders properly
+        contentType: file.type || undefined,
       });
 
     if (error) {
@@ -93,31 +113,38 @@ export default function StockFlow({ type, user }) {
       throw new Error(`Upload failed: ${error.message}`);
     }
 
-    // Try a public URL first (works if the "bills" bucket is public).
+    // Try public URL first
     const { data: publicData } = supabase.storage
       .from(BILLS_BUCKET)
       .getPublicUrl(filePath);
 
     if (publicData?.publicUrl) {
-      // Verify the public URL is actually reachable — if the bucket is
-      // private, Supabase still returns a URL object but it will 400/403.
       try {
-        const head = await fetch(publicData.publicUrl, { method: 'HEAD' });
-        if (head.ok) return publicData.publicUrl;
+        const head = await fetch(
+          publicData.publicUrl,
+          { method: 'HEAD' }
+        );
+
+        if (head.ok) {
+          return publicData.publicUrl;
+        }
       } catch {
-        // network hiccup — fall through to signed URL
+        // fall through to signed URL
       }
     }
 
-    // Fall back to a signed URL if the bucket is private or the public
-    // URL wasn't reachable.
-    const { data: signedData, error: signedErr } = await supabase.storage
-      .from(BILLS_BUCKET)
-      .createSignedUrl(filePath, 60 * 60); // 1 hour
+    // Fallback to signed URL
+    const { data: signedData, error: signedErr } =
+      await supabase.storage
+        .from(BILLS_BUCKET)
+        .createSignedUrl(filePath, 60 * 60);
 
     if (signedErr) {
       console.error('Signed URL error:', signedErr);
-      throw new Error(`Could not generate a preview URL: ${signedErr.message}`);
+
+      throw new Error(
+        `Could not generate a preview URL: ${signedErr.message}`
+      );
     }
 
     return signedData.signedUrl;
@@ -125,9 +152,13 @@ export default function StockFlow({ type, user }) {
 
   const handleFileUpload = (e) => {
     const file = e.target.files[0];
+
     if (!file) return;
+
     if (!currentProjectId) {
-      alert('No project selected. Please contact your administrator.');
+      alert(
+        'No project selected. Please contact your administrator.'
+      );
       return;
     }
 
@@ -139,37 +170,60 @@ export default function StockFlow({ type, user }) {
 
     reader.onloadend = async () => {
       try {
-        const base64 = reader.result?.split(',')[1];
+        const base64 =
+          reader.result?.split(',')[1];
 
         if (!base64) {
-          throw new Error('Image could not be read');
+          throw new Error(
+            'Image could not be read'
+          );
         }
 
-        const compressedFile = await compressImage(file);
-        const uploadedBillImageUrl = await uploadBillImage(compressedFile);
-        setBillImageUrl(uploadedBillImageUrl);
+        const compressedFile =
+          await compressImage(file);
+
+        const uploadedBillImageUrl =
+          await uploadBillImage(
+            compressedFile
+          );
+
+        setBillImageUrl(
+          uploadedBillImageUrl
+        );
 
         const response = await fetch(
           `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${import.meta.env.VITE_GEMINI_API_KEY}`,
           {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: {
+              'Content-Type': 'application/json'
+            },
             body: JSON.stringify({
               contents: [{
                 parts: [
                   {
                     inline_data: {
-                      mime_type: file.type || 'image/jpeg',
+                      mime_type:
+                        file.type ||
+                        'image/jpeg',
                       data: base64
                     }
                   },
                   {
-                    text: `Read this bill image carefully. 
-                  Extract every line item and return 
-                  ONLY a JSON array, no markdown, 
-                  no backticks, no explanation.
-                  Format: [{"name":"product name","qty":100,"unit":"Pcs"}]
-                  If unit not clear use Pcs as default.Extract EVERY SINGLE line item from this document, no matter how many there are. Do not skip or summarize any rows. Return ALL items found, even if there are 50+ items.`
+                    text: `Read this bill image carefully.
+Extract every line item and return
+ONLY a JSON array, no markdown,
+no backticks, no explanation.
+
+Format:
+[{"name":"product name","qty":100,"unit":"Pcs"}]
+
+If unit not clear use Pcs as default.
+
+Extract EVERY SINGLE line item from this document,
+no matter how many there are.
+Do not skip or summarize any rows.
+Return ALL items found, even if there are 50+ items.`
                   }
                 ]
               }]
@@ -178,38 +232,72 @@ export default function StockFlow({ type, user }) {
         );
 
         if (!response.ok) {
-          const errData = await response.json().catch(() => ({}));
-          throw new Error(`Gemini API Error (${response.status}): ${errData.error?.message || response.statusText}`);
+          const errData =
+            await response
+              .json()
+              .catch(() => ({}));
+
+          throw new Error(
+            `Gemini API Error (${response.status}): ${errData.error?.message ||
+            response.statusText
+            }`
+          );
         }
 
-        const data = await response.json();
-        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        const data =
+          await response.json();
 
-        if (!text) throw new Error('No response from Gemini');
+        const text =
+          data?.candidates?.[0]
+            ?.content?.parts?.[0]?.text;
 
-        const cleaned = text.replace(/```json|```/g, '').trim();
-        const parsedItems = JSON.parse(cleaned);
+        if (!text) {
+          throw new Error(
+            'No response from Gemini'
+          );
+        }
 
-        const newItems = parsedItems.map((item, index) => ({
-          id: index + 1,
-          name: item.name || '',
-          qty: item.qty || 0,
-          unit: item.unit || 'Pcs'
-        }));
+        const cleaned = text
+          .replace(/```json|```/g, '')
+          .trim();
+
+        const parsedItems =
+          JSON.parse(cleaned);
+
+        const newItems =
+          parsedItems.map(
+            (item, index) => ({
+              id: index + 1,
+              name: item.name || '',
+              qty: item.qty || 0,
+              unit: item.unit || 'Pcs'
+            })
+          );
 
         setItems(newItems);
         setStep(3);
 
       } catch (err) {
-        console.error('Gemini error:', err);
-        alert(err.message || 'Could not read bill. Please try again.');
+        console.error(
+          'Gemini error:',
+          err
+        );
+
+        alert(
+          err.message ||
+          'Could not read bill. Please try again.'
+        );
+
         setItems([]);
         setStep(3);
       }
     };
 
     reader.onerror = () => {
-      alert('Could not load image file.');
+      alert(
+        'Could not load image file.'
+      );
+
       setItems([]);
       setStep(3);
     };
@@ -219,28 +307,44 @@ export default function StockFlow({ type, user }) {
 
   const handleExcelUpload = async (e) => {
     const file = e.target.files[0];
+
     if (!file) return;
 
-    const extension = file.name.split(".").pop().toLowerCase();
+    const extension =
+      file.name
+        .split(".")
+        .pop()
+        .toLowerCase();
 
     // ---------- CSV ----------
     if (extension === "csv") {
       Papa.parse(file, {
         header: true,
         skipEmptyLines: true,
+
         complete: async (results) => {
           try {
-            const imported = await extractExcelWithGemini(results.data);
+            const imported =
+              await extractExcelWithGemini(
+                results.data
+              );
 
             setItems(imported);
             setStep(3);
+
           } catch (err) {
             console.error(err);
-            alert("Unable to process CSV using Gemini.");
+
+            alert(
+              "Unable to process CSV using Gemini."
+            );
           }
         },
+
         error: () => {
-          alert("Unable to read CSV file.");
+          alert(
+            "Unable to read CSV file."
+          );
         },
       });
 
@@ -248,187 +352,587 @@ export default function StockFlow({ type, user }) {
     }
 
     // ---------- XLSX / XLS ----------
-    const reader = new FileReader();
+    const reader =
+      new FileReader();
 
     reader.onload = async (event) => {
       try {
-        const workbook = XLSX.read(event.target.result, {
-          type: "array",
-        });
+        const workbook =
+          XLSX.read(
+            event.target.result,
+            {
+              type: "array",
+            }
+          );
 
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const sheet =
+          workbook.Sheets[
+          workbook.SheetNames[0]
+          ];
 
-        const rows = XLSX.utils.sheet_to_json(sheet);
+        const rows =
+          XLSX.utils.sheet_to_json(
+            sheet
+          );
 
-        const imported = await extractExcelWithGemini(rows);
+        const imported =
+          await extractExcelWithGemini(
+            rows
+          );
 
         setItems(imported);
         setStep(3);
+
       } catch (err) {
         console.error(err);
-        alert("Unable to process Excel file.");
+
+        alert(
+          "Unable to process Excel file."
+        );
       }
     };
 
     reader.readAsArrayBuffer(file);
   };
 
-
   const handleConfirm = async () => {
     if (!currentProjectId) {
-      alert('No project selected. Please contact your administrator.');
+      alert(
+        'No project selected. Please contact your administrator.'
+      );
       return;
     }
+
     setStep(5);
 
     try {
-      const currentUserId = user?.id;
-      const now = new Date().toISOString();
+      const currentUserId =
+        user?.id;
+
+      const now =
+        new Date().toISOString();
 
       for (const item of items) {
-        if (!item.name?.trim() || item.qty <= 0) continue;
+        if (
+          !item.name?.trim() ||
+          item.qty <= 0
+        ) {
+          continue;
+        }
 
-        // ── Step 1: Find product by name + project_id (never duplicate) ──
-        const { data: existingProducts, error: findErr } = await supabase
+        // ─────────────────────────────
+        // Step 1: Find product
+        // ─────────────────────────────
+
+        const {
+          data: existingProducts,
+          error: findErr
+        } = await supabase
           .from('products')
           .select('id')
-          .eq('name', item.name.trim())
-          .eq('project_id', currentProjectId)
+          .eq(
+            'name',
+            item.name.trim()
+          )
+          .eq(
+            'project_id',
+            currentProjectId
+          )
           .limit(1);
 
-        if (findErr) throw findErr;
+        if (findErr) {
+          throw findErr;
+        }
 
         let productId;
 
-        if (existingProducts && existingProducts.length > 0) {
-          // ── Step 2: Product exists → reuse its id ──
-          productId = existingProducts[0].id;
+        // ─────────────────────────────
+        // Step 2: Existing product
+        // ─────────────────────────────
+
+        if (
+          existingProducts &&
+          existingProducts.length > 0
+        ) {
+          productId =
+            existingProducts[0].id;
+
         } else {
-          // ── Step 3: Product not found ──
+
+          // ─────────────────────────────
+          // Step 3: Product doesn't exist
+          // ─────────────────────────────
+
           if (!isAdd) {
-            alert(`Cannot deduct: "${item.name}" not found in this project's inventory.`);
+            alert(
+              `Cannot deduct: "${item.name}" not found in this project's inventory.`
+            );
+
             setStep(3);
             return;
           }
-          // Insert new product row (only for add flow)
-          const { data: newProduct, error: prodErr } = await supabase
+
+          const {
+            data: newProduct,
+            error: prodErr
+          } = await supabase
             .from('products')
             .insert({
-              name: item.name.trim(),
+              name:
+                item.name.trim(),
               unit: item.unit,
-              project_id: currentProjectId,
-              category: 'General'
+              project_id:
+                currentProjectId,
+              category:
+                'General'
             })
             .select('id')
             .single();
 
-          if (prodErr) throw prodErr;
-          productId = newProduct.id;
+          if (prodErr) {
+            throw prodErr;
+          }
+
+          productId =
+            newProduct.id;
         }
 
-        // ── Step 4: Fetch current stock row for this product ──
-        const { data: stockRows } = await supabase
+        // ─────────────────────────────
+        // Step 4: Fetch current stock
+        // ─────────────────────────────
+
+        const {
+          data: stockRows
+        } = await supabase
           .from('stock')
-          .select('current_qty, threshold')
-          .eq('product_id', productId)
+          .select(
+            'current_qty, threshold'
+          )
+          .eq(
+            'product_id',
+            productId
+          )
           .limit(1);
 
-        const existingStock = stockRows && stockRows.length > 0 ? stockRows[0] : null;
-        const currentQty = existingStock?.current_qty ?? 0;
-        const threshold = existingStock?.threshold ?? 10;
+        const existingStock =
+          stockRows &&
+            stockRows.length > 0
+            ? stockRows[0]
+            : null;
+
+        const currentQty =
+          existingStock?.current_qty ??
+          0;
+
+        const threshold =
+          existingStock?.threshold ??
+          10;
+
+        // ─────────────────────────────
+        // ADD STOCK
+        // ─────────────────────────────
 
         if (isAdd) {
-          // ── Step 5 (Add): Upsert stock — adds to existing qty, never duplicates ──
-          const { error: upsertErr } = await supabase
+
+          const newQty =
+            currentQty +
+            item.qty;
+
+          const {
+            error: upsertErr
+          } = await supabase
             .from('stock')
             .upsert(
               {
-                product_id: productId,
-                project_id: currentProjectId,
-                current_qty: currentQty + item.qty,
+                product_id:
+                  productId,
+
+                project_id:
+                  currentProjectId,
+
+                current_qty:
+                  newQty,
+
                 threshold,
-                last_updated: now
+
+                last_updated:
+                  now
               },
-              { onConflict: 'product_id' }
+              {
+                onConflict:
+                  'product_id'
+              }
             );
 
-          if (upsertErr) throw upsertErr;
+          if (upsertErr) {
+            throw upsertErr;
+          }
 
-          // ── Step 6 (Add): Log inward transaction ──
-          await supabase.from('transactions').insert({
-            product_id: productId,
-            project_id: currentProjectId,
-            type: 'inward',
-            qty: item.qty,
-            bill_image_url: billImageUrl,
-            confirmed_by: currentUserId,
-            timestamp: now
-          });
+          // ─────────────────────────────
+          // Resolve active alert if stock
+          // now meets or exceeds threshold
+          // ─────────────────────────────
+
+          if (newQty >= threshold) {
+            try {
+              const { error: resolveErr } =
+                await supabase
+                  .from('alerts')
+                  .update({ status: 'dismissed' })
+                  .eq('product_id', productId)
+                  .eq('project_id', currentProjectId)
+                  .eq('status', 'active');
+
+              if (resolveErr) {
+                console.error(
+                  'Alert resolve failed:',
+                  resolveErr
+                );
+              }
+            } catch (resolveEx) {
+              console.error(
+                'Alert resolve threw:',
+                resolveEx
+              );
+            }
+          }
+
+          await supabase
+            .from('transactions')
+            .insert({
+              product_id:
+                productId,
+
+              project_id:
+                currentProjectId,
+
+              type:
+                'inward',
+
+              qty:
+                item.qty,
+
+              bill_image_url:
+                billImageUrl,
+
+              confirmed_by:
+                currentUserId,
+
+              timestamp:
+                now
+            });
 
         } else {
-          // ── Step 5 (Deduct): Validate sufficient stock ──
-          if (currentQty - item.qty < 0) {
-            alert(`Cannot deduct ${item.qty} of "${item.name}" — only ${currentQty} in stock.`);
+
+          // ─────────────────────────────
+          // DEDUCT STOCK
+          // ─────────────────────────────
+
+          if (
+            currentQty -
+            item.qty <
+            0
+          ) {
+            alert(
+              `Cannot deduct ${item.qty} of "${item.name}" — only ${currentQty} in stock.`
+            );
+
             setStep(3);
             return;
           }
 
-          const newQty = currentQty - item.qty;
+          const newQty =
+            currentQty -
+            item.qty;
 
-          // ── Step 6 (Deduct): Update stock ──
-          const { error: updateErr } = await supabase
+          // ─────────────────────────────
+          // Step 6: Update stock
+          // ─────────────────────────────
+
+          const {
+            error: updateErr
+          } = await supabase
             .from('stock')
-            .update({ current_qty: newQty, last_updated: now })
-            .eq('product_id', productId);
+            .update({
+              current_qty:
+                newQty,
 
-          if (updateErr) throw updateErr;
+              last_updated:
+                now
+            })
+            .eq(
+              'product_id',
+              productId
+            );
 
-          // ── Step 7 (Deduct): Log outward transaction ──
-          await supabase.from('transactions').insert({
-            product_id: productId,
-            project_id: currentProjectId,
-            type: 'outward',
-            qty: item.qty,
-            bill_image_url: billImageUrl,
-            confirmed_by: currentUserId,
-            timestamp: now
-          });
+          if (updateErr) {
+            throw updateErr;
+          }
 
-          // ── Step 8 (Deduct): Trigger alert if below threshold ──
-          if (newQty < threshold) {
-            await supabase.from('alerts').insert({
-              product_id: productId,
-              project_id: currentProjectId,
-              status: 'active',
-              triggered_at: now
+          // ─────────────────────────────
+          // Step 7: Log transaction
+          // ─────────────────────────────
+
+          const {
+            error: transactionErr
+          } = await supabase
+            .from('transactions')
+            .insert({
+              product_id:
+                productId,
+
+              project_id:
+                currentProjectId,
+
+              type:
+                'outward',
+
+              qty:
+                item.qty,
+
+              bill_image_url:
+                billImageUrl,
+
+              confirmed_by:
+                currentUserId,
+
+              timestamp:
+                now
             });
+
+          if (transactionErr) {
+            console.error(
+              'Transaction logging failed:',
+              transactionErr
+            );
+          }
+
+          // ─────────────────────────────
+          // Step 8: LOW STOCK ALERT
+          // ─────────────────────────────
+
+          if (
+            newQty <
+            threshold
+          ) {
+
+            console.log(
+              'LOW STOCK CONDITION TRIGGERED',
+              {
+                productId,
+                projectId:
+                  currentProjectId,
+                currentQty:
+                  newQty,
+                threshold
+              }
+            );
+
+            const {
+              data: newAlert,
+              error: alertErr
+            } = await supabase
+              .from('alerts')
+              .insert({
+                product_id:
+                  productId,
+
+                project_id:
+                  currentProjectId,
+
+                status:
+                  'active',
+
+                triggered_at:
+                  now
+              })
+              .select()
+              .single();
+
+            // ─────────────────────────────
+            // Existing active alert
+            // ─────────────────────────────
+
+            if (alertErr) {
+
+              if (
+                alertErr.code ===
+                '23505'
+              ) {
+
+                console.log(
+                  'Active low-stock alert already exists. Email will not be sent again.'
+                );
+
+              } else {
+
+                console.error(
+                  'Alert insert failed:',
+                  alertErr
+                );
+              }
+
+            } else if (newAlert) {
+
+              // ─────────────────────────────
+              // BRAND NEW ALERT
+              // ─────────────────────────────
+
+              console.log(
+                'NEW LOW-STOCK ALERT CREATED:',
+                newAlert
+              );
+
+              console.log(
+                'Calling send-low-stock-alert Edge Function...'
+              );
+
+              try {
+
+                const {
+                  data: emailData,
+                  error: emailErr
+                } = await supabase.functions.invoke(
+                  'send-low-stock-alert',
+                  {
+                    body: {
+                      product_id:
+                        productId,
+
+                      project_id:
+                        currentProjectId,
+
+                      current_qty:
+                        newQty,
+
+                      threshold
+                    }
+                  }
+                );
+
+                console.log(
+                  'send-low-stock-alert response:',
+                  {
+                    data:
+                      emailData,
+                    error:
+                      emailErr
+                  }
+                );
+
+                if (emailErr) {
+
+                  console.error(
+                    'Low-stock email failed to send:',
+                    emailErr
+                  );
+
+                  console.error(
+                    'Email function error details:',
+                    {
+                      message:
+                        emailErr.message,
+                      name:
+                        emailErr.name,
+                      context:
+                        emailErr.context
+                    }
+                  );
+
+                } else {
+
+                  console.log(
+                    'LOW-STOCK EMAIL FUNCTION SUCCESS:',
+                    emailData
+                  );
+
+                }
+
+              } catch (emailException) {
+
+                console.error(
+                  'Exception while invoking low-stock email function:',
+                  emailException
+                );
+
+              }
+            }
           }
         }
       }
 
+      // ─────────────────────────────
+      // SUCCESS
+      // ─────────────────────────────
+
       setStep(4);
+
       setTimeout(() => {
         navigate('/dashboard');
       }, 3000);
 
     } catch (err) {
-      console.error('Stock operation failed:', err);
-      alert('An error occurred while saving. Please try again.');
+
+      console.error(
+        'Stock operation failed:',
+        err
+      );
+
+      alert(
+        'An error occurred while saving. Please try again.'
+      );
+
       setStep(3);
     }
   };
 
-  const updateItem = (id, field, value) => {
-    setItems(items.map(item => item.id === id ? { ...item, [field]: value } : item));
+  const updateItem = (
+    id,
+    field,
+    value
+  ) => {
+    setItems(
+      items.map(
+        item =>
+          item.id === id
+            ? {
+              ...item,
+              [field]:
+                value
+            }
+            : item
+      )
+    );
   };
 
   const deleteItem = (id) => {
-    setItems(items.filter(item => item.id !== id));
+    setItems(
+      items.filter(
+        item =>
+          item.id !== id
+      )
+    );
   };
 
   const addItem = () => {
-    const newId = items.length > 0 ? Math.max(...items.map(i => i.id)) + 1 : 1;
-    setItems([...items, { id: newId, name: '', qty: 0, unit: 'pcs' }]);
+    const newId =
+      items.length > 0
+        ? Math.max(
+          ...items.map(
+            i => i.id
+          )
+        ) + 1
+        : 1;
+
+    setItems([
+      ...items,
+      {
+        id: newId,
+        name: '',
+        qty: 0,
+        unit: 'pcs'
+      }
+    ]);
   };
 
   if (step === 1) {
