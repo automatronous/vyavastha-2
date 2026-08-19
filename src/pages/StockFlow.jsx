@@ -935,28 +935,18 @@ Return ALL items found, even if there are 50+ items.`
     ]);
   };
 
-  // ─────────────────────────────
-  // STEP 1
-  // ─────────────────────────────
-
   if (step === 1) {
     return (
       <div className="max-w-3xl mx-auto">
-
-        <h1 className="text-2xl font-bold text-white mb-6">
-          {title}
-        </h1>
+        <h1 className="text-2xl font-bold text-white mb-6">{title}</h1>
 
         <label className="card p-8 md:p-12 text-center border-dashed border-2 border-border hover:border-primary/50 transition-colors cursor-pointer group block">
-
           <input
             id="billUpload"
             type="file"
             className="hidden"
             accept="image/*,.pdf"
-            onChange={
-              handleFileUpload
-            }
+            onChange={handleFileUpload}
           />
 
           <input
@@ -964,25 +954,13 @@ Return ALL items found, even if there are 50+ items.`
             type="file"
             className="hidden"
             accept=".xlsx,.xls,.csv"
-            onChange={
-              handleExcelUpload
-            }
+            onChange={handleExcelUpload}
           />
-
           <div className="w-16 h-16 bg-navy rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform">
-
             <UploadCloud className="w-8 h-8 text-primary" />
-
           </div>
-
-          <h3 className="text-xl font-medium text-white mb-2">
-            Drop bill image here or click to upload
-          </h3>
-
-          <p className="text-text-muted text-sm mb-8">
-            Supported formats:
-            JPG • PNG • PDF • XLSX • XLS • CSV
-          </p>
+          <h3 className="text-xl font-medium text-white mb-2">Drop bill image here or click to upload</h3>
+          <p className="text-text-muted text-sm mb-8">Supported formats: JPG • PNG • PDF • XLSX • XLS • CSV </p>
 
           <div className="flex justify-center gap-4">
 
@@ -1002,294 +980,115 @@ Return ALL items found, even if there are 50+ items.`
             </label>
 
           </div>
-
         </label>
       </div>
     );
   }
 
-  // ─────────────────────────────
-  // STEP 2 / 5
-  // ─────────────────────────────
-
-  if (
-    step === 2 ||
-    step === 5
-  ) {
+  if (step === 2 || step === 5) {
     return (
       <div className="max-w-3xl mx-auto flex flex-col items-center justify-center min-h-[400px]">
-
         <Loader2 className="w-12 h-12 text-primary animate-spin mb-4" />
-
-        <h2 className="text-xl font-bold text-white">
-
-          {step === 2
-            ? 'Gemini is reading your bill...'
-            : 'Updating Database...'}
-
-        </h2>
-
-        <p className="text-text-muted mt-2">
-
-          {step === 2
-            ? 'Extracting items and quantities with AI'
-            : 'Saving items to your inventory'}
-
-        </p>
-
+        <h2 className="text-xl font-bold text-white">{step === 2 ? 'Gemini is reading your bill...' : 'Updating Database...'}</h2>
+        <p className="text-text-muted mt-2">{step === 2 ? 'Extracting items and quantities with AI' : 'Saving items to your inventory'}</p>
       </div>
     );
   }
-
-  // ─────────────────────────────
-  // STEP 3
-  // ─────────────────────────────
 
   if (step === 3) {
     return (
       <div className="max-w-6xl mx-auto">
-
-        <h1 className="text-2xl font-bold text-white mb-6">
-          {confirmTitle}
-        </h1>
+        <h1 className="text-2xl font-bold text-white mb-6">{confirmTitle}</h1>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
           <div className="lg:col-span-2 space-y-6">
-
             <div className="card overflow-hidden">
-
               <div className="p-4 border-b border-border flex justify-between items-center bg-navy">
-
-                <h3 className="font-semibold text-white">
-                  Extracted Items
-                </h3>
-
-                <button
-                  onClick={addItem}
-                  className="text-sm flex items-center text-primary hover:text-primary-hover"
-                >
-                  <Plus className="w-4 h-4 mr-1" />
-                  Add Row
+                <h3 className="font-semibold text-white">Extracted Items</h3>
+                <button onClick={addItem} className="text-sm flex items-center text-primary hover:text-primary-hover">
+                  <Plus className="w-4 h-4 mr-1" /> Add Row
                 </button>
-
               </div>
-
               <div className="p-4">
-
                 <div className="space-y-3">
-
-                  {items.map(
-                    (item) => (
-
-                      <div
-                        key={item.id}
-                        className="flex items-center gap-3 bg-navy p-3 rounded-lg border border-border"
-                      >
-
-                        <div className="flex-1">
-
-                          <input
-                            type="text"
-                            value={
-                              item.name
-                            }
-                            onChange={
-                              (e) =>
-                                updateItem(
-                                  item.id,
-                                  'name',
-                                  e.target.value
-                                )
-                            }
-                            className="input-field py-1.5 text-sm"
-                            placeholder="Item Name"
-                          />
-
-                        </div>
-
-                        <div className="w-24">
-
-                          <input
-                            type="number"
-                            value={
-                              item.qty
-                            }
-                            onChange={
-                              (e) =>
-                                updateItem(
-                                  item.id,
-                                  'qty',
-                                  parseInt(
-                                    e.target.value
-                                  ) || 0
-                                )
-                            }
-                            className="input-field py-1.5 text-sm"
-                            placeholder="Qty"
-                          />
-
-                        </div>
-
-                        <div className="w-24">
-
-                          <select
-                            value={
-                              item.unit
-                            }
-                            onChange={
-                              (e) =>
-                                updateItem(
-                                  item.id,
-                                  'unit',
-                                  e.target.value
-                                )
-                            }
-                            className="input-field py-1.5 text-sm appearance-none bg-navy-light"
-                          >
-
-                            <option value="pcs">
-                              pcs
-                            </option>
-
-                            <option value="m">
-                              m
-                            </option>
-
-                            <option value="kg">
-                              kg
-                            </option>
-
-                            <option value="bags">
-                              bags
-                            </option>
-
-                          </select>
-
-                        </div>
-
-                        <button
-                          onClick={() =>
-                            deleteItem(
-                              item.id
-                            )
-                          }
-                          className="p-2 text-text-muted hover:text-danger hover:bg-danger/10 rounded-md transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-
+                  {items.map((item) => (
+                    <div key={item.id} className="flex items-center gap-3 bg-navy p-3 rounded-lg border border-border">
+                      <div className="flex-1">
+                        <input
+                          type="text"
+                          value={item.name}
+                          onChange={(e) => updateItem(item.id, 'name', e.target.value)}
+                          className="input-field py-1.5 text-sm"
+                          placeholder="Item Name"
+                        />
                       </div>
-
-                    )
-                  )}
-
+                      <div className="w-24">
+                        <input
+                          type="number"
+                          value={item.qty}
+                          onChange={(e) => updateItem(item.id, 'qty', parseInt(e.target.value) || 0)}
+                          className="input-field py-1.5 text-sm"
+                          placeholder="Qty"
+                        />
+                      </div>
+                      <div className="w-24">
+                        <select
+                          value={item.unit}
+                          onChange={(e) => updateItem(item.id, 'unit', e.target.value)}
+                          className="input-field py-1.5 text-sm appearance-none bg-navy-light"
+                        >
+                          <option value="pcs">pcs</option>
+                          <option value="m">m</option>
+                          <option value="kg">kg</option>
+                          <option value="bags">bags</option>
+                        </select>
+                      </div>
+                      <button
+                        onClick={() => deleteItem(item.id)}
+                        className="p-2 text-text-muted hover:text-danger hover:bg-danger/10 rounded-md transition-colors"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
                 </div>
-
               </div>
-
               <div className="p-4 border-t border-border bg-navy-light flex justify-end gap-3">
-
-                <button
-                  onClick={() => {
-                    setBillImageUrl(null);
-                    setBillFileType(null);
-                    setStep(1);
-                  }}
-                  className="btn-secondary"
-                >
-                  Cancel
+                <button onClick={() => { setBillImageUrl(null); setBillFileType(null); setStep(1); }} className="btn-secondary">Cancel</button>
+                <button onClick={handleConfirm} className="btn-primary bg-success hover:bg-emerald-600 shadow-[0_0_15px_rgba(16,185,129,0.3)]">
+                  Confirm & {isAdd ? 'Add to Stock' : 'Deduct from Stock'}
                 </button>
-
-                <button
-                  onClick={
-                    handleConfirm
-                  }
-                  className="btn-primary bg-success hover:bg-emerald-600 shadow-[0_0_15px_rgba(16,185,129,0.3)]"
-                >
-                  Confirm &{' '}
-                  {isAdd
-                    ? 'Add to Stock'
-                    : 'Deduct from Stock'}
-                </button>
-
               </div>
-
             </div>
-
           </div>
 
           <div className="card p-4 h-[500px] flex flex-col">
-
-            <h3 className="font-semibold text-white mb-4 border-b border-border pb-3">
-              Bill Preview
-            </h3>
-
+            <h3 className="font-semibold text-white mb-4 border-b border-border pb-3">Bill Preview</h3>
             <div className="flex-1 bg-navy border border-border rounded-lg flex items-center justify-center relative overflow-hidden">
-
               {billImageUrl ? (
-
                 billFileType === 'pdf' ? (
-
-                  <iframe
-                    src={billImageUrl}
-                    className="w-full h-full"
-                    title="Bill PDF preview"
-                  />
-
+                  <iframe src={billImageUrl} className="w-full h-full" title="Bill PDF preview" />
                 ) : (
-
-                  <img
-                    src={billImageUrl}
-                    alt="Uploaded bill"
-                    className="w-full h-full object-contain"
-                  />
-
+                  <img src={billImageUrl} alt="Uploaded bill" className="w-full h-full object-contain" />
                 )
-
               ) : (
-
                 <FileText className="w-16 h-16 text-text-muted opacity-50" />
-
               )}
-
             </div>
-
           </div>
-
         </div>
-
       </div>
     );
   }
 
-  // ─────────────────────────────
-  // STEP 4
-  // ─────────────────────────────
-
+  // Step 4: Success Toast/View
   return (
     <div className="max-w-md mx-auto text-center py-20 flex flex-col items-center">
-
       <div className="w-20 h-20 bg-success/20 rounded-full flex items-center justify-center mb-6">
-
         <CheckCircle2 className="w-10 h-10 text-success" />
-
       </div>
-
-      <h2 className="text-2xl font-bold text-white">
-
-        Stock{' '}
-        {isAdd
-          ? 'updated'
-          : 'deducted'}{' '}
-        successfully!
-
-      </h2>
-
-      <p className="text-text-muted mt-2">
-        Redirecting back...
-      </p>
-
+      <h2 className="text-2xl font-bold text-white">Stock {isAdd ? 'updated' : 'deducted'} successfully!</h2>
+      <p className="text-text-muted mt-2">Redirecting back...</p>
     </div>
   );
 }
