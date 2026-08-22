@@ -12,6 +12,7 @@ const BILLS_BUCKET = 'bills'; // single source of truth for the bucket name
 export default function StockFlow({ type, user }) {
   const [step, setStep] = useState(1); // 1: Upload, 2: Loading, 3: Confirm, 4: Success, 5: Processing DB
   const [items, setItems] = useState([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [billImageUrl, setBillImageUrl] = useState(null);
   const [billFileType, setBillFileType] = useState(null); // 'pdf' | 'image' | null
   const navigate = useNavigate();
@@ -28,6 +29,7 @@ export default function StockFlow({ type, user }) {
     setStep(1);
     setBillImageUrl(null);
     setBillFileType(null);
+    setIsSubmitting(false);
   }, [type]);
 
   const compressImage = (file) => {
@@ -396,12 +398,17 @@ Return ALL items found, even if there are 50+ items.`
   };
 
   const handleConfirm = async () => {
+    console.log('handleConfirm triggered', new Date().toISOString());
+
     if (!currentProjectId) {
       alert(
         'No project selected. Please contact your administrator.'
       );
       return;
     }
+
+    if (isSubmitting) return;
+    setIsSubmitting(true);
 
     setStep(5);
 
@@ -419,6 +426,8 @@ Return ALL items found, even if there are 50+ items.`
         ) {
           continue;
         }
+
+        console.log('saving item:', item.name, 'qty:', item.qty);
 
         // ─────────────────────────────
         // Step 1: Find product
@@ -468,6 +477,7 @@ Return ALL items found, even if there are 50+ items.`
               `Cannot deduct: "${item.name}" not found in this project's inventory.`
             );
 
+            setIsSubmitting(false);
             setStep(3);
             return;
           }
@@ -533,47 +543,31 @@ Return ALL items found, even if there are 50+ items.`
         // ─────────────────────────────
 
         if (isAdd) {
-
-          const newQty =
-            currentQty +
-            item.qty;
-
-          const {
-            error: upsertErr
-          } = await supabase
+          const { data: freshRows, error: fetchErr } = await supabase
             .from('stock')
-            .upsert(
-              {
-                product_id:
-                  productId,
+            .select('current_qty, threshold')
+            .eq('product_id', productId)
+            .limit(1);
 
-                project_id:
-                  currentProjectId,
-
-                current_qty:
-                  newQty,
-
-                threshold,
-
-                last_updated:
-                  now
-              },
-              {
-                onConflict:
-                  'product_id'
-              }
-            );
-
-          if (upsertErr) {
-            throw upsertErr;
+          if (fetchErr) {
+            throw fetchErr;
           }
+
+          const existing = freshRows && freshRows.length > 0 ? freshRows[0] : null;
+
+          console.log('current db qty:', existing?.current_qty, 
+                      'adding:', item.qty,
+                      'result will be:', (existing?.current_qty || 0) + item.qty);
+
+          const finalThreshold = existing?.threshold ?? 10;
+          const newQty = (existing?.current_qty || 0) + item.qty;
 
           // ─────────────────────────────
           // Resolve active alert if stock
           // now meets or exceeds threshold
           // ─────────────────────────────
 
-          if (newQty >= threshold) {
+          if (newQty >= finalThreshold) {
             try {
               const { error: resolveErr } =
                 await supabase
@@ -637,6 +631,7 @@ Return ALL items found, even if there are 50+ items.`
               `Cannot deduct ${item.qty} of "${item.name}" — only ${currentQty} in stock.`
             );
 
+            setIsSubmitting(false);
             setStep(3);
             return;
           }
@@ -644,30 +639,6 @@ Return ALL items found, even if there are 50+ items.`
           const newQty =
             currentQty -
             item.qty;
-
-          // ─────────────────────────────
-          // Step 6: Update stock
-          // ─────────────────────────────
-
-          const {
-            error: updateErr
-          } = await supabase
-            .from('stock')
-            .update({
-              current_qty:
-                newQty,
-
-              last_updated:
-                now
-            })
-            .eq(
-              'product_id',
-              productId
-            );
-
-          if (updateErr) {
-            throw updateErr;
-          }
 
           // ─────────────────────────────
           // Step 7: Log transaction
@@ -882,6 +853,7 @@ Return ALL items found, even if there are 50+ items.`
         'An error occurred while saving. Please try again.'
       );
 
+      setIsSubmitting(false);
       setStep(3);
     }
   };
@@ -1054,9 +1026,13 @@ Return ALL items found, even if there are 50+ items.`
                 </div>
               </div>
               <div className="p-4 border-t border-border bg-navy-light flex justify-end gap-3">
-                <button onClick={() => { setBillImageUrl(null); setBillFileType(null); setStep(1); }} className="btn-secondary">Cancel</button>
-                <button onClick={handleConfirm} className="btn-primary bg-success hover:bg-emerald-600 shadow-[0_0_15px_rgba(16,185,129,0.3)]">
-                  Confirm & {isAdd ? 'Add to Stock' : 'Deduct from Stock'}
+                <button onClick={() => { setBillImageUrl(null); setBillFileType(null); setStep(1); setIsSubmitting(false); }} className="btn-secondary">Cancel</button>
+                <button
+                  onClick={handleConfirm}
+                  disabled={isSubmitting}
+                  className="btn-primary bg-success hover:bg-emerald-600 shadow-[0_0_15px_rgba(16,185,129,0.3)]"
+                >
+                  {isSubmitting ? 'Saving...' : `Confirm & ${isAdd ? 'Add to Stock' : 'Deduct from Stock'}`}
                 </button>
               </div>
             </div>
